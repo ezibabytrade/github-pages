@@ -1,0 +1,105 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Live Forex Predictor</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f4f4f4; padding: 20px; }
+    .container { background: white; padding: 20px; border-radius: 10px; max-width: 700px; margin: auto; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+    select, input { padding: 10px; margin: 10px 0; width: 100%; font-size: 16px; }
+    button { padding: 12px 20px; background: #28a745; color: white; border: none; font-size: 16px; border-radius: 5px; cursor: pointer; }
+    button:hover { background: #218838; }
+    .result { margin-top: 20px; font-size: 18px; }
+    .buy { background: #d4edda; padding: 10px; border-radius: 5px; }
+    .sell { background: #f8d7da; padding: 10px; border-radius: 5px; }
+    .neutral { background: #fff3cd; padding: 10px; border-radius: 5px; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h2>Live Forex Predictor</h2>
+  
+  <label for="symbol">Select Currency Pair:</label>
+  <select id="symbol">
+    <option value="EUR/USD">EUR/USD</option>
+    <option value="GBP/USD">GBP/USD</option>
+    <option value="USD/JPY">USD/JPY</option>
+    <option value="AUD/USD">AUD/USD</option>
+    <option value="USD/CAD">USD/CAD</option>
+  </select>
+
+  <label for="interval">Select Timeframe:</label>
+  <select id="interval">
+    <option value="1h">1 Hour</option>
+    <option value="4h">4 Hour</option>
+    <option value="1day">Daily</option>
+  </select>
+
+  <button onclick="getForexPrediction()">Predict</button>
+
+  <div id="result" class="result"></div>
+</div>
+
+<script>
+async function getForexPrediction() {
+  const symbol = document.getElementById("symbol").value.replace("/", "");
+  const interval = document.getElementById("interval").value;
+  const resultDiv = document.getElementById("result");
+
+  resultDiv.innerHTML = "Fetching market data...";
+
+  const url = `https://api.twelvedata.com/time_series?symbol=${symbol}&interval=${interval}&outputsize=100&apikey=978400d431cd4bb98c0a2eb791889716`;
+
+  try {
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (!data.values || data.values.length < 50) {
+      resultDiv.innerHTML = "Insufficient data from API.";
+      return;
+    }
+
+    const closes = data.values.map(v => parseFloat(v.close)).reverse();
+    const changeCount = closes.slice(1).map((v, i) => v > closes[i] ? 1 : v < closes[i] ? -1 : 0);
+
+    const up = changeCount.filter(v => v > 0).length;
+    const down = changeCount.filter(v => v < 0).length;
+    const trendConfidence = (up / (up + down)) * 100;
+
+    const avg = closes.reduce((a, b) => a + b, 0) / closes.length;
+    const variance = closes.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / closes.length;
+    const sd = Math.sqrt(variance);
+
+    const trustScore = (trendConfidence * 0.7) + ((1 / sd) * 100 * 0.3);
+
+    let signalClass = "neutral";
+    let signal = "NEUTRAL";
+
+    if (trendConfidence > 60 && trustScore > 70) {
+      signal = "BUY";
+      signalClass = "buy";
+    } else if (trendConfidence < 40 && trustScore > 70) {
+      signal = "SELL";
+      signalClass = "sell";
+    }
+
+    resultDiv.innerHTML = `
+      <div class="${signalClass}">
+        <b>Signal:</b> ${signal}<br>
+        <b>Trend Confidence:</b> ${trendConfidence.toFixed(1)}%<br>
+        <b>Volatility (SD):</b> ${sd.toFixed(5)}<br>
+        <b>Trust Score:</b> ${trustScore.toFixed(1)}%
+        ${trustScore > 150 ? "<br><span style='color:red'>⚠️ Trust unusually high — market may be overextending.</span>" : ""}
+      </div>
+    `;
+
+  } catch (err) {
+    resultDiv.innerHTML = "Error fetching or analyzing data.";
+    console.error(err);
+  }
+}
+</script>
+</body>
+</html>
